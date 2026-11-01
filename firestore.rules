@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default-deny all unmapped paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner() {
+      return isSignedIn() &&
+        request.auth.token.email == 'vibhagupta13572@gmail.com' &&
+        request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // User profiles: authenticated users can access their own profile
+    match /users/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow create, update: if isSignedIn() && request.auth.uid == userId;
+      allow delete: if isOwner();
+    }
+
+    // EON Memory: Public read access for researchers and visitors worldwide
+    match /memories/{memoryId} {
+      allow read: if true;
+      allow create: if (isOwner() || isSignedIn()) && isValidId(memoryId) &&
+        request.resource.data.title is string && request.resource.data.title.size() <= 256 &&
+        request.resource.data.content is string && request.resource.data.content.size() <= 10000;
+      allow update: if (isOwner() || (isSignedIn() && request.resource.data.ownerUid == request.auth.uid)) &&
+        isValidId(memoryId) &&
+        request.resource.data.title is string && request.resource.data.title.size() <= 256;
+      allow delete: if isOwner();
+    }
+
+    // EON Evolution Proposals: Public read access
+    match /evolution_proposals/{proposalId} {
+      allow read: if true;
+      allow create: if (isOwner() || isSignedIn()) && isValidId(proposalId) &&
+        request.resource.data.title is string && request.resource.data.title.size() <= 256;
+      allow update: if (isOwner() || isSignedIn()) && isValidId(proposalId);
+      allow delete: if isOwner();
+    }
+
+    // EON Lab Experiments: Public read access
+    match /lab_experiments/{experimentId} {
+      allow read: if true;
+      allow create: if (isOwner() || isSignedIn()) && isValidId(experimentId) &&
+        request.resource.data.hypothesis is string && request.resource.data.hypothesis.size() <= 1024;
+      allow update: if (isOwner() || isSignedIn()) && isValidId(experimentId);
+      allow delete: if isOwner();
+    }
+
+    // EON Guard Audit Logs: Public read access for transparent governance
+    match /audit_logs/{logId} {
+      allow read: if true;
+      allow create: if (isOwner() || isSignedIn()) && isValidId(logId) &&
+        request.resource.data.entryHash is string && request.resource.data.entryHash.size() <= 128;
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}

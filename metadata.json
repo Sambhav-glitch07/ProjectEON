@@ -1,0 +1,6 @@
+{
+  "name": "Project EON - Autonomous Cognitive Research & Software Evolution Platform",
+  "description": "An integrated AI research and software evolution platform featuring EON Mind cognitive preferences, EON Evolve codebase mutation engine, EON Lab hypothesis experimentation, and EON Guard single-owner security.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

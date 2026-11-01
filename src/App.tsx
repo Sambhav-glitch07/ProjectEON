@@ -16,7 +16,10 @@ import {
   SystemStatus,
   VersionSnapshot,
 } from './core/types';
-import { isAuthorizedOwner } from './core/security';
+import { isAuthorizedOwner, createAuditEntry } from './core/security';
+import { getInitialMemories } from './core/memory';
+import { getInitialExperiments } from './core/lab';
+import { getClientInitialProposals, getClientInitialStatus } from './core/clientBridge';
 import { Navigation, ActiveTab } from './components/Navigation';
 import { OverviewView } from './components/views/OverviewView';
 import { MindView } from './components/views/MindView';
@@ -45,32 +48,70 @@ export default function App() {
   const [experiments, setExperiments] = useState<LabExperiment[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
 
-  // Fetch initial telemetry and collections from backend
+  // Fetch initial telemetry and collections from backend or local fallback for GitHub Pages
   const loadInitialData = async () => {
     try {
-      const [statusRes, memoryRes, evolveRes, labRes, auditRes] = await Promise.all([
-        fetch('/api/system/status'),
-        fetch('/api/memory/list'),
-        fetch('/api/evolve/proposals'),
-        fetch('/api/lab/experiments'),
-        fetch('/api/guard/audit'),
-      ]);
+      const statusRes = await fetch('/api/system/status').catch(() => null);
 
-      if (statusRes.ok) setSystemStatus(await statusRes.json());
-      if (memoryRes.ok) setMemories(await memoryRes.json());
-      if (evolveRes.ok) {
-        const evolveData = await evolveRes.json();
-        setProposals(evolveData.proposals || []);
-        setSnapshots(evolveData.snapshots || []);
+      if (statusRes && statusRes.ok) {
+        const text = await statusRes.text();
+        try {
+          const statusData = JSON.parse(text);
+          setSystemStatus(statusData);
+
+          const [memoryRes, evolveRes, labRes, auditRes] = await Promise.all([
+            fetch('/api/memory/list'),
+            fetch('/api/evolve/proposals'),
+            fetch('/api/lab/experiments'),
+            fetch('/api/guard/audit'),
+          ]);
+
+          if (memoryRes.ok) setMemories(await memoryRes.json());
+          if (evolveRes.ok) {
+            const evolveData = await evolveRes.json();
+            setProposals(evolveData.proposals || []);
+            setSnapshots(evolveData.snapshots || []);
+          }
+          if (labRes.ok) setExperiments(await labRes.json());
+          if (auditRes.ok) {
+            const auditData = await auditRes.json();
+            setAuditLogs(auditData.logs || []);
+          }
+          return;
+        } catch {
+          // Response was not JSON (e.g. index.html served on GitHub Pages)
+        }
       }
-      if (labRes.ok) setExperiments(await labRes.json());
-      if (auditRes.ok) {
-        const auditData = await auditRes.json();
-        setAuditLogs(auditData.logs || []);
-      }
-    } catch (err) {
-      console.error('Failed to load system data:', err);
+    } catch {
+      // Backend not reached
     }
+
+    // Static / GitHub Pages Standalone Fallback
+    const initialMems = getInitialMemories();
+    const initialProps = getClientInitialProposals();
+    const initialExps = getInitialExperiments();
+    const genesisAudit = [
+      createAuditEntry(
+        'GENESIS_BLOCK_00000000000000000000000000000000000000000000000000000000',
+        'SYSTEM',
+        'CORE_BOOTSTRAP',
+        'EON CORE',
+        'Project EON v1.0.0 Public Edition initialized for GitHub Pages.'
+      ),
+    ];
+
+    setMemories(initialMems);
+    setProposals(initialProps);
+    setExperiments(initialExps);
+    setAuditLogs(genesisAudit);
+    setSystemStatus(
+      getClientInitialStatus(
+        initialMems.length,
+        initialProps.length,
+        initialExps.length,
+        genesisAudit.length
+      )
+    );
   };
 
   useEffect(() => {

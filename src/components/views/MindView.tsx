@@ -17,6 +17,8 @@ import {
   PlusCircle,
 } from 'lucide-react';
 import { MemoryNode } from '../../core/types';
+import { clientQueryMind } from '../../core/clientBridge';
+import { getInitialMemories } from '../../core/memory';
 
 interface Message {
   id: string;
@@ -74,6 +76,7 @@ export const MindView: React.FC<MindViewProps> = ({ onMemoryCreated }) => {
         }),
       });
 
+      if (!response.ok) throw new Error('API server offline');
       const data = await response.json();
 
       const assistantMessage: Message = {
@@ -87,15 +90,17 @@ export const MindView: React.FC<MindViewProps> = ({ onMemoryCreated }) => {
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (err: any) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `msg-${Date.now()}-err`,
-          role: 'assistant',
-          text: `Cognitive Engine encountered error: ${err.message}`,
-          timestamp: new Date().toLocaleTimeString(),
-        },
-      ]);
+      // Fallback for GitHub Pages static hosting
+      const fallback = clientQueryMind(textToSend, getInitialMemories());
+      const assistantMessage: Message = {
+        id: `msg-${Date.now()}-ai`,
+        role: 'assistant',
+        text: fallback.text,
+        timestamp: new Date().toLocaleTimeString(),
+        activatedMemories: fallback.activatedMemories,
+        proposedMemories: fallback.proposedMemories,
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
     } finally {
       setLoading(false);
     }
